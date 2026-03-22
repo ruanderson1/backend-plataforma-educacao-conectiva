@@ -1,0 +1,55 @@
+# Logs
+logs
+*.log
+*.out
+*.err
+
+# Dependency directories
+vendor/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Build output
+bin/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# dotenv environment files
+.env
+.env.*
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+
+# Coverage
+coverage/
+*.coverprofile
+
+# Misc
+*.tgz
+*.tar.gz
+*.zip
+
+# Go modules cache (optional)
+.gocache/
+
+# Test database dumps
+*.sqlite
+*.db

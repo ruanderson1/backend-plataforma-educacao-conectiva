@@ -30,6 +30,15 @@ type Repository struct {
 	collection *mongo.Collection
 }
 
+// UpdateFieldsByPublicID atualiza campos específicos do usuário pelo public_id
+func (r *Repository) UpdateFieldsByPublicID(ctx context.Context, publicID string, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	_, err := r.collection.UpdateOne(ctx, bson.M{"public_id": publicID}, bson.M{"$set": fields})
+	return err
+}
+
 // NewRepository inicializa o repositório e garante índices obrigatórios.
 func NewRepository(db *mongo.Database) (*Repository, error) {
 	repository := &Repository{collection: db.Collection("users")}

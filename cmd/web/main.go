@@ -8,15 +8,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"plataforma/cmd/web/handlers"
 	"plataforma/internal/auth"
+	"plataforma/internal/classroom"
 	"plataforma/internal/database"
+	"plataforma/internal/users"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type application struct {
-	authHandler *handlers.AuthHandler
+	authHandler      *handlers.AuthHandler
+	classroomHandler *handlers.ClassroomHandler
+	profileHandler   *handlers.ProfileHandler
 }
 
 const (
@@ -26,6 +32,9 @@ const (
 )
 
 func main() {
+	// Carrega variáveis do .env se existir
+	_ = godotenv.Load()
+
 	// Carrega as configurações principais com fallback para valores padrão.
 	mongoURI := strings.TrimSpace(os.Getenv("MONGO_URI"))
 	if mongoURI == "" {
@@ -52,7 +61,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app := &application{authHandler: handlers.NewAuthHandler(authService)}
+	// Inicializa dependências classroom
+	classroomRepo := classroom.NewRepository(client.Database(mongoDB))
+	studentRepo := classroom.NewStudentRepo() // TODO: passar mongo.Database se necessário
+	classroomService := classroom.NewService(classroomRepo, studentRepo)
+	classroomHandler := handlers.NewClassroomHandler(classroom.NewHandler(classroomService))
+
+	// Dependências de perfil do professor
+
+	usersRepo, _ := users.NewRepository(client.Database(mongoDB))
+	profileRepo := users.NewProfileRepository(client.Database(mongoDB))
+	profileService := users.NewProfileService(profileRepo)
+	profileHandler := handlers.NewProfileHandler(profileService, usersRepo)
+
+	app := &application{
+		authHandler:      handlers.NewAuthHandler(authService),
+		classroomHandler: classroomHandler,
+		profileHandler:   profileHandler,
+	}
 
 	srv := &http.Server{
 		Addr:         serverAddr,

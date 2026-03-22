@@ -18,6 +18,11 @@ type AuthHandler struct {
 	authService AuthService
 }
 
+// AuthService retorna a interface AuthService do handler
+func (h *AuthHandler) AuthService() AuthService {
+	return h.authService
+}
+
 // AuthService define o contrato mínimo de autenticação usado pelos handlers.
 // A interface permite testar handlers com mocks sem depender de banco real.
 type AuthService interface {
