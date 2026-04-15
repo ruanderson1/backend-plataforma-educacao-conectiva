@@ -67,12 +67,26 @@ func (app *application) routes() http.Handler {
 		}
 	}))
 	mux.HandleFunc("/api/classes/", requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		// Roteamento manual para GET, PUT, DELETE /api/classes/:id
+		// Roteamento manual para /api/classes/:id e /api/classes/:id/students
 		id := ""
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/classes/"), "/")
 		if len(parts) > 0 {
 			id = parts[0]
 		}
+
+		// Suporta GET /api/classes/:id/students usando o mesmo handler de listagem por sala.
+		if len(parts) >= 2 && strings.EqualFold(parts[1], "students") {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			query := r.URL.Query()
+			query.Set("sala", id)
+			r.URL.RawQuery = query.Encode()
+			app.classroomHandler.StudentHandler.ListByClassroom(w, r)
+			return
+		}
+
 		r = r.WithContext(context.WithValue(r.Context(), "id", id))
 		switch r.Method {
 		case http.MethodGet:
@@ -81,6 +95,37 @@ func (app *application) routes() http.Handler {
 			app.classroomHandler.Handler.Update(w, r)
 		case http.MethodDelete:
 			app.classroomHandler.Handler.Delete(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/students", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			app.classroomHandler.StudentHandler.Create(w, r)
+		case http.MethodGet:
+			app.classroomHandler.StudentHandler.ListByClassroom(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/students/", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		id := ""
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/students/"), "/")
+		if len(parts) > 0 {
+			id = parts[0]
+		}
+		r = r.WithContext(context.WithValue(r.Context(), "studentID", id))
+
+		switch r.Method {
+		case http.MethodGet:
+			app.classroomHandler.StudentHandler.GetByID(w, r)
+		case http.MethodPut:
+			app.classroomHandler.StudentHandler.Update(w, r)
+		case http.MethodDelete:
+			app.classroomHandler.StudentHandler.Delete(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

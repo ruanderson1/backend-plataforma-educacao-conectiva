@@ -63,9 +63,12 @@ func main() {
 
 	// Inicializa dependências classroom
 	classroomRepo := classroom.NewRepository(client.Database(mongoDB))
-	studentRepo := classroom.NewStudentRepo() // TODO: passar mongo.Database se necessário
+	studentRepo := classroom.NewStudentRepo(client.Database(mongoDB))
 	classroomService := classroom.NewService(classroomRepo, studentRepo)
-	classroomHandler := handlers.NewClassroomHandler(classroom.NewHandler(classroomService))
+	classroomHandler := handlers.NewClassroomHandler(
+		classroom.NewHandler(classroomService),
+		classroom.NewStudentHandler(classroomService),
+	)
 
 	// Dependências de perfil do professor
 

@@ -5,9 +5,10 @@ import (
 )
 
 type ClassroomHandler struct {
-	Handler *classroom.Handler
+	Handler        *classroom.Handler
+	StudentHandler *classroom.StudentHandler
 }
 
-func NewClassroomHandler(handler *classroom.Handler) *ClassroomHandler {
-	return &ClassroomHandler{Handler: handler}
+func NewClassroomHandler(handler *classroom.Handler, studentHandler *classroom.StudentHandler) *ClassroomHandler {
+	return &ClassroomHandler{Handler: handler, StudentHandler: studentHandler}
 }

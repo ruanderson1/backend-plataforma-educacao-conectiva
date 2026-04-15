@@ -81,6 +81,15 @@ func (r *Repository) FindByID(ctx context.Context, id primitive.ObjectID, teache
 	return &c, err
 }
 
+func (r *Repository) FindByIDAny(ctx context.Context, id primitive.ObjectID) (*ClassRoom, error) {
+	var c ClassRoom
+	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&c)
+	if err == mongo.ErrNoDocuments {
+		return nil, ErrNotFound
+	}
+	return &c, err
+}
+
 func (r *Repository) Update(ctx context.Context, id primitive.ObjectID, teacherId string, update bson.M) error {
 	update["updatedAt"] = time.Now()
 	res, err := r.collection.UpdateOne(ctx, bson.M{"_id": id, "teacherId": teacherId}, bson.M{"$set": update})
