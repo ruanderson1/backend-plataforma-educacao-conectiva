@@ -131,6 +131,50 @@ func (app *application) routes() http.Handler {
 		}
 	}))
 
+	mux.HandleFunc("/api/reports/student-observations", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			app.reportHandler.Handler.CreateStudentObservation(w, r)
+		case http.MethodGet:
+			app.reportHandler.Handler.ListStudentObservations(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/reports/student-llm-reports", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			app.reportHandler.Handler.CreateStudentLLMReport(w, r)
+		case http.MethodGet:
+			app.reportHandler.Handler.ListStudentLLMReports(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/reports/class-observations", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			app.reportHandler.Handler.CreateClassObservation(w, r)
+		case http.MethodGet:
+			app.reportHandler.Handler.ListClassObservations(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/reports/class-llm-reports", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			app.reportHandler.Handler.CreateClassLLMReport(w, r)
+		case http.MethodGet:
+			app.reportHandler.Handler.ListClassLLMReports(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
 	return app.withCORS(mux)
 }
 

@@ -23,6 +23,7 @@ type application struct {
 	authHandler      *handlers.AuthHandler
 	classroomHandler *handlers.ClassroomHandler
 	profileHandler   *handlers.ProfileHandler
+	reportHandler    *handlers.ReportHandler
 }
 
 const (
@@ -71,16 +72,28 @@ func main() {
 	)
 
 	// Dependências de perfil do professor
-
 	usersRepo, _ := users.NewRepository(client.Database(mongoDB))
 	profileRepo := users.NewProfileRepository(client.Database(mongoDB))
 	profileService := users.NewProfileService(profileRepo)
 	profileHandler := handlers.NewProfileHandler(profileService, usersRepo)
 
+	// Inicializa dependências de relatórios (observações e LLM)
+	reportRepo := classroom.NewReportRepository(client.Database(mongoDB), studentRepo)
+	reportHandler := handlers.NewReportHandler(
+		classroom.NewReportHandler(
+			studentRepo,
+			reportRepo.StudentObsRepo,
+			reportRepo.StudentLLMRepo,
+			reportRepo.ClassObsRepo,
+			reportRepo.ClassLLMRepo,
+		),
+	)
+
 	app := &application{
 		authHandler:      handlers.NewAuthHandler(authService),
 		classroomHandler: classroomHandler,
 		profileHandler:   profileHandler,
+		reportHandler:    reportHandler,
 	}
 
 	srv := &http.Server{

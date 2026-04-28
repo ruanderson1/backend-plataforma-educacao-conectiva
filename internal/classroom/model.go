@@ -12,6 +12,7 @@ type ClassRoom struct {
 	AccessCode string             `bson:"accessCode" json:"accessCode"`
 	YearGrade  string             `bson:"yearGrade" json:"yearGrade"`
 	TeacherID  string             `bson:"teacherId" json:"teacherId"`
+	IsClosed   bool               `bson:"isClosed" json:"isClosed"`
 	CreatedAt  time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt  time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

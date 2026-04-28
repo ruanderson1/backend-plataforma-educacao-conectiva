@@ -11,7 +11,7 @@ import (
 
 type ClassroomService interface {
 	Create(ctx context.Context, c *ClassRoom) error
-	ListByTeacher(ctx context.Context, teacherId string) ([]map[string]interface{}, error)
+	ListByTeacher(ctx context.Context, teacherId string, includeClosed bool) ([]map[string]interface{}, error)
 	GetByID(ctx context.Context, id primitive.ObjectID, teacherId string) (map[string]interface{}, error)
 	Update(ctx context.Context, id primitive.ObjectID, teacherId string, update map[string]interface{}) error
 	Delete(ctx context.Context, id primitive.ObjectID, teacherId string) error
@@ -81,7 +81,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	teacherId := getUserIDFromContext(r.Context())
-	classes, err := h.service.ListByTeacher(r.Context(), teacherId)
+	includeClosed := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("includeClosed")), "true")
+	classes, err := h.service.ListByTeacher(r.Context(), teacherId, includeClosed)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

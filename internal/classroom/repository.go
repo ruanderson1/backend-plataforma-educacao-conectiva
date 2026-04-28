@@ -38,6 +38,7 @@ func (r *Repository) Create(ctx context.Context, c *ClassRoom) error {
 	c.ID = primitive.NewObjectID()
 	c.CreatedAt = time.Now()
 	c.UpdatedAt = c.CreatedAt
+	c.IsClosed = false
 	for {
 		c.AccessCode = generateAccessCode()
 		count, err := r.collection.CountDocuments(ctx, bson.M{"accessCode": c.AccessCode})
@@ -55,8 +56,13 @@ func (r *Repository) Create(ctx context.Context, c *ClassRoom) error {
 	return err
 }
 
-func (r *Repository) FindByTeacher(ctx context.Context, teacherId string) ([]ClassRoom, error) {
-	cur, err := r.collection.Find(ctx, bson.M{"teacherId": teacherId})
+func (r *Repository) FindByTeacher(ctx context.Context, teacherId string, includeClosed bool) ([]ClassRoom, error) {
+	filter := bson.M{"teacherId": teacherId}
+	if !includeClosed {
+		filter["isClosed"] = bson.M{"$ne": true}
+	}
+
+	cur, err := r.collection.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}

@@ -105,8 +105,8 @@ func (s *Service) Create(ctx context.Context, c *ClassRoom) error {
 	return s.repo.Create(ctx, c)
 }
 
-func (s *Service) ListByTeacher(ctx context.Context, teacherId string) ([]map[string]interface{}, error) {
-	classes, err := s.repo.FindByTeacher(ctx, teacherId)
+func (s *Service) ListByTeacher(ctx context.Context, teacherId string, includeClosed bool) ([]map[string]interface{}, error) {
+	classes, err := s.repo.FindByTeacher(ctx, teacherId, includeClosed)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +118,7 @@ func (s *Service) ListByTeacher(ctx context.Context, teacherId string) ([]map[st
 			"accessCode": c.AccessCode,
 			"yearGrade":  c.YearGrade,
 			"teacherId":  c.TeacherID,
+			"isClosed":   c.IsClosed,
 			"createdAt":  c.CreatedAt,
 			"updatedAt":  c.UpdatedAt,
 		})
@@ -136,6 +137,7 @@ func (s *Service) GetByID(ctx context.Context, id primitive.ObjectID, teacherId 
 		"accessCode": c.AccessCode,
 		"yearGrade":  c.YearGrade,
 		"teacherId":  c.TeacherID,
+		"isClosed":   c.IsClosed,
 		"createdAt":  c.CreatedAt,
 		"updatedAt":  c.UpdatedAt,
 	}, nil
