@@ -30,6 +30,7 @@ const (
 	defaultServerAddr = ":4000"
 	defaultMongoDB    = "plataforma_educacao_conectiva"
 	mongoTimeout      = 10 * time.Second
+	reportTimeout     = 120 * time.Second
 )
 
 func main() {
@@ -99,8 +100,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         serverAddr,
 		Handler:      app.routes(),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  reportTimeout,
+		WriteTimeout: reportTimeout,
 		IdleTimeout:  30 * time.Second,
 	}
 

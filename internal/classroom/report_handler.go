@@ -128,39 +128,35 @@ func (h *ReportHandler) CreateStudentLLMReport(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var llmResult map[string]interface{}
+	// 4. Mapear resposta aninhada e criar relatório
+	var llmResult struct {
+		Academico Academico `json:"academico"`
+		Emocional Emocional `json:"emocional"`
+		Risco     struct {
+			RiscoDesempenhoBaixo string `json:"risco_desempenho_baixo"`
+			RiscoDesengajamento  string `json:"risco_desengajamento"`
+			NecessitaIntervencao bool   `json:"necessita_intervencao"`
+		} `json:"risco"`
+		SaidaLLM SaidaLLM `json:"saida_llm"`
+	}
 	if err := json.Unmarshal(respBody, &llmResult); err != nil {
 		respondError(w, http.StatusBadGateway, "Resposta inválida da LLM")
 		return
 	}
 
-	// 4. Mapear resposta e criar relatório
 	llmReport := &StudentLLMReport{
 		StudentID:            req.StudentID,
 		StudentObservationID: req.StudentObservationID,
 		PeriodoReferencia:    req.PeriodoReferencia,
 		CreatedAt:            time.Now(),
-		Academico: Academico{
-			DesempenhoGeral:          toString(llmResult["desempenho_geral"]),
-			EvolucaoRecente:          toString(llmResult["evolucao_recente"]),
-			DificuldadesAprendizagem: toString(llmResult["dificuldades_aprendizagem"]),
-			PontosFortesAprendizagem: toString(llmResult["pontos_fortes_aprendizagem"]),
-		},
-		Emocional: Emocional{
-			EstadoEmocionalGeral: toString(llmResult["estado_emocional_geral"]),
-			Engajamento:          toString(llmResult["engajamento"]),
-		},
+		Academico:            llmResult.Academico,
+		Emocional:            llmResult.Emocional,
 		Risco: Risco{
-			RiscoDesempenhoBaixo: toString(llmResult["risco_desempenho_baixo"]),
-			RiscoDesengajamento:  toString(llmResult["risco_desengajamento"]),
-			NecessitaIntervencao: fmt.Sprintf("%v", toBool(llmResult["necessita_intervencao"])),
+			RiscoDesempenhoBaixo: llmResult.Risco.RiscoDesempenhoBaixo,
+			RiscoDesengajamento:  llmResult.Risco.RiscoDesengajamento,
+			NecessitaIntervencao: fmt.Sprintf("%v", llmResult.Risco.NecessitaIntervencao),
 		},
-		SaidaLLM: SaidaLLM{
-			ResumoLLM:                 toString(llmResult["resumo_llm"]),
-			RecomendacaoParaProfessor: toString(llmResult["recomendacao_para_professor"]),
-			RecomendacaoParaPais:      toString(llmResult["recomendacao_para_pais"]),
-			PlanoAcaoSugerido:         toString(llmResult["plano_acao_sugerido"]),
-		},
+		SaidaLLM: llmResult.SaidaLLM,
 	}
 
 	if err := h.studentLLMRepo.Create(r.Context(), llmReport); err != nil {
@@ -248,6 +244,12 @@ func (h *ReportHandler) CreateClassLLMReport(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	classID, err := primitive.ObjectIDFromHex(strings.TrimSpace(req.ClassID))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid class_id format")
+		return
+	}
+
 	// 1. Buscar observação da turma
 	classObsList, err := h.classObsRepo.FindByClassAndPeriod(r.Context(), req.ClassID, req.PeriodoReferencia)
 	if err != nil || len(classObsList) == 0 {
@@ -256,34 +258,21 @@ func (h *ReportHandler) CreateClassLLMReport(w http.ResponseWriter, r *http.Requ
 	}
 	classObs := classObsList[0]
 
-	// 2. Buscar observações dos alunos da turma
-	studentObsList, _ := h.studentObsRepo.FindByStudentAndPeriod(r.Context(), "", req.PeriodoReferencia)
+	// 2. Buscar alunos reais da turma
+	students, err := h.studentRepo.FindByClassroom(r.Context(), classID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(students) == 0 {
+		respondError(w, http.StatusBadRequest, "class has no students")
+		return
+	}
 
 	// 3. Montar lista de alunos para payload
-	type studentSummary struct {
-		StudentID                string `json:"student_id"`
-		DesempenhoGeral          string `json:"desempenho_geral"`
-		Engajamento              string `json:"engajamento"`
-		RiscoDesengajamento      string `json:"risco_desengajamento"`
-		DificuldadesAprendizagem string `json:"dificuldades_aprendizagem"`
-	}
-	var students []studentSummary
-	for _, obs := range studentObsList {
-		students = append(students, studentSummary{
-			StudentID:                obs.StudentID,
-			DesempenhoGeral:          "medio",
-			Engajamento:              "medio",
-			RiscoDesengajamento:      "baixo",
-			DificuldadesAprendizagem: obs.ObservacaoProfessor,
-		})
-	}
+	studentsList := buildClassStudentSummaries(students)
 
 	// 4. Montar payload para LLM
-	// Garante que students nunca seja nil
-	studentsList := students
-	if studentsList == nil {
-		studentsList = make([]studentSummary, 0)
-	}
 	llmPayload := map[string]interface{}{
 		"class_id":                   req.ClassID,
 		"periodo_referencia":         req.PeriodoReferencia,
@@ -299,7 +288,7 @@ func (h *ReportHandler) CreateClassLLMReport(w http.ResponseWriter, r *http.Requ
 	llmURL = llmURL + "/reports/class"
 
 	llmReqBody, _ := json.Marshal(llmPayload)
-	fmt.Printf("[DEBUG] LLM CLASS PAYLOAD: %s\n", string(llmReqBody))
+	fmt.Printf("[INFO] class_llm_report.start class_id=%s periodo=%s students=%d\n", req.ClassID, req.PeriodoReferencia, len(studentsList))
 	httpReq, _ := http.NewRequest(http.MethodPost, llmURL, bytes.NewReader(llmReqBody))
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -312,13 +301,30 @@ func (h *ReportHandler) CreateClassLLMReport(w http.ResponseWriter, r *http.Requ
 	defer llmResp.Body.Close()
 
 	respBody, _ := io.ReadAll(llmResp.Body)
+	fmt.Printf("[INFO] class_llm_report.llm_response class_id=%s status=%s bytes=%d\n", req.ClassID, llmResp.Status, len(respBody))
 	if llmResp.StatusCode != http.StatusOK {
 		respondError(w, http.StatusBadGateway, fmt.Sprintf("LLM erro: %s - %s", llmResp.Status, string(respBody)))
 		return
 	}
 
-	var llmResult map[string]interface{}
+	var llmResult struct {
+		AgregadoAlunos struct {
+			DesempenhoMedioTurma        string `json:"desempenho_medio_turma"`
+			PrincipaisDificuldadesTurma string `json:"principais_dificuldades_turma"`
+			NivelEngajamentoTurma       string `json:"nivel_engajamento_turma"`
+		} `json:"agregado_alunos"`
+		RiscoColetivo struct {
+			RiscoDesengajamentoTurma     string `json:"risco_desengajamento_turma"`
+			NecessitaIntervencaoColetiva bool   `json:"necessita_intervencao_coletiva"`
+		} `json:"risco_coletivo"`
+		SaidaLLMTurma struct {
+			ResumoLLMTurma                 string `json:"resumo_llm_turma"`
+			RecomendacaoParaProfessorTurma string `json:"recomendacao_para_professor_turma"`
+			PlanoAcaoTurma                 string `json:"plano_acao_turma"`
+		} `json:"saida_llm_turma"`
+	}
 	if err := json.Unmarshal(respBody, &llmResult); err != nil {
+		fmt.Printf("[ERROR] class_llm_report.invalid_json class_id=%s err=%v\n", req.ClassID, err)
 		respondError(w, http.StatusBadGateway, "Resposta inválida da LLM")
 		return
 	}
@@ -330,26 +336,122 @@ func (h *ReportHandler) CreateClassLLMReport(w http.ResponseWriter, r *http.Requ
 		PeriodoReferencia:  req.PeriodoReferencia,
 		CreatedAt:          time.Now(),
 		AgregadoAlunos: AgregadoAlunos{
-			DesempenhoMedioTurma:        toString(llmResult["desempenho_medio_turma"]),
-			PrincipaisDificuldadesTurma: toString(llmResult["principais_dificuldades_turma"]),
-			NivelEngajamentoTurma:       toString(llmResult["nivel_engajamento_turma"]),
+			DesempenhoMedioTurma:        llmResult.AgregadoAlunos.DesempenhoMedioTurma,
+			PrincipaisDificuldadesTurma: llmResult.AgregadoAlunos.PrincipaisDificuldadesTurma,
+			NivelEngajamentoTurma:       llmResult.AgregadoAlunos.NivelEngajamentoTurma,
 		},
 		RiscoColetivo: RiscoColetivo{
-			RiscoDesengajamentoTurma:     toString(llmResult["risco_desengajamento_turma"]),
-			NecessitaIntervencaoColetiva: fmt.Sprintf("%v", toBool(llmResult["necessita_intervencao_coletiva"])),
+			RiscoDesengajamentoTurma:     llmResult.RiscoColetivo.RiscoDesengajamentoTurma,
+			NecessitaIntervencaoColetiva: fmt.Sprintf("%v", llmResult.RiscoColetivo.NecessitaIntervencaoColetiva),
 		},
 		SaidaLLMTurma: SaidaLLMTurma{
-			ResumoLLMTurma:                 toString(llmResult["resumo_llm_turma"]),
-			RecomendacaoParaProfessorTurma: toString(llmResult["recomendacao_para_professor_turma"]),
-			PlanoAcaoTurma:                 toString(llmResult["plano_acao_turma"]),
+			ResumoLLMTurma:                 llmResult.SaidaLLMTurma.ResumoLLMTurma,
+			RecomendacaoParaProfessorTurma: llmResult.SaidaLLMTurma.RecomendacaoParaProfessorTurma,
+			PlanoAcaoTurma:                 llmResult.SaidaLLMTurma.PlanoAcaoTurma,
 		},
 	}
 
 	if err := h.classLLMRepo.Create(r.Context(), llmReport); err != nil {
+		fmt.Printf("[ERROR] class_llm_report.persist_failed class_id=%s err=%v\n", req.ClassID, err)
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	fmt.Printf("[INFO] class_llm_report.success class_id=%s periodo=%s\n", req.ClassID, req.PeriodoReferencia)
 	respondJSON(w, http.StatusCreated, llmReport)
+}
+
+type classStudentSummary struct {
+	StudentID                string `json:"student_id"`
+	DesempenhoGeral          string `json:"desempenho_geral"`
+	Engajamento              string `json:"engajamento"`
+	RiscoDesengajamento      string `json:"risco_desengajamento"`
+	DificuldadesAprendizagem string `json:"dificuldades_aprendizagem"`
+}
+
+func buildClassStudentSummaries(students []Student) []classStudentSummary {
+	summaries := make([]classStudentSummary, 0, len(students))
+	for _, student := range students {
+		desempenho := summarizePerformance(student.Notas)
+		engajamento := summarizeEngagement(student.Frequencia)
+		risco := summarizeClassRisk(desempenho, engajamento)
+		dificuldades := strings.TrimSpace(student.ObservacoesGerais)
+		if dificuldades == "" {
+			dificuldades = "sem observacoes gerais registradas"
+		}
+		summaries = append(summaries, classStudentSummary{
+			StudentID:                student.ID.Hex(),
+			DesempenhoGeral:          desempenho,
+			Engajamento:              engajamento,
+			RiscoDesengajamento:      risco,
+			DificuldadesAprendizagem: dificuldades,
+		})
+	}
+	return summaries
+}
+
+func summarizePerformance(notes StudentNotes) string {
+	if len(notes) == 0 {
+		return "medio"
+	}
+
+	var totalRatio float64
+	for _, note := range notes {
+		maxScore := note.NotaMaxima
+		if maxScore <= 0 {
+			maxScore = 10
+		}
+		totalRatio += note.Pontuacao / maxScore
+	}
+	averageRatio := totalRatio / float64(len(notes))
+	switch {
+	case averageRatio >= 0.8:
+		return "alto"
+	case averageRatio >= 0.6:
+		return "medio"
+	default:
+		return "baixo"
+	}
+}
+
+func summarizeEngagement(records AttendanceRecords) string {
+	if len(records) == 0 {
+		return "medio"
+	}
+
+	var presencas int
+	var totalRegistros int
+	for _, record := range records {
+		switch strings.ToLower(strings.TrimSpace(record.Tipo)) {
+		case string(AttendancePresenca):
+			presencas++
+			totalRegistros++
+		case string(AttendanceFalta), string(AttendanceFaltaJustificada):
+			totalRegistros++
+		}
+	}
+	if totalRegistros == 0 {
+		return "medio"
+	}
+
+	presenceRate := float64(presencas) / float64(totalRegistros)
+	switch {
+	case presenceRate >= 0.8:
+		return "alto"
+	case presenceRate >= 0.6:
+		return "medio"
+	default:
+		return "baixo"
+	}
+}
+
+func summarizeClassRisk(desempenho string, engajamento string) string {
+	if desempenho == "baixo" && engajamento == "baixo" {
+		return "alto"
+	}
+	if desempenho == "baixo" || engajamento == "baixo" {
+		return "medio"
+	}
+	return "baixo"
 }
 
 // GET /api/reports/class-llm-reports?class_id=...&periodo=...
