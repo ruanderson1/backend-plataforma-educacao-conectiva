@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -55,6 +56,16 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("/api/auth/professor/login", app.handleMethod(http.MethodPost, app.authHandler.LoginProfessor))
 	mux.HandleFunc("/api/auth/me", app.handleMethod(http.MethodGet, app.authHandler.Me))
 	mux.HandleFunc("/api/auth/logout", app.handleMethod(http.MethodPost, app.authHandler.Logout))
+	mux.HandleFunc("/api/responsavel/children", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			app.authHandler.ResponsavelChildren(w, r)
+		case http.MethodPost:
+			app.authHandler.AddResponsavelChildren(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
 
 	mux.HandleFunc("/api/classes", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -137,6 +148,10 @@ func (app *application) routes() http.Handler {
 			app.reportHandler.Handler.CreateStudentObservation(w, r)
 		case http.MethodGet:
 			app.reportHandler.Handler.ListStudentObservations(w, r)
+		case http.MethodPut:
+			app.reportHandler.Handler.UpdateStudentObservation(w, r)
+		case http.MethodDelete:
+			app.reportHandler.Handler.DeleteStudentObservation(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -175,6 +190,28 @@ func (app *application) routes() http.Handler {
 		}
 	}))
 
+	mux.HandleFunc("/api/chat/threads", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			app.chatHandler.ListThreads(w, r)
+		case http.MethodPost:
+			app.chatHandler.CreateThread(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/chat/messages", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			app.chatHandler.ListMessages(w, r)
+		case http.MethodPost:
+			app.chatHandler.CreateMessage(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
 	return app.withCORS(mux)
 }
 
@@ -200,8 +237,31 @@ func (app *application) handleMethod(method string, next http.HandlerFunc) http.
 
 // withCORS aplica cabeçalhos para integração com o frontend React.
 func (app *application) withCORS(next http.Handler) http.Handler {
+	allowedOrigins := map[string]struct{}{
+		"http://localhost:5173": {},
+		"http://localhost:8081": {},
+	}
+
+	if configuredOrigins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); configuredOrigins != "" {
+		allowedOrigins = map[string]struct{}{}
+		for _, origin := range strings.Split(configuredOrigins, ",") {
+			normalizedOrigin := strings.TrimSpace(origin)
+			if normalizedOrigin == "" {
+				continue
+			}
+			allowedOrigins[normalizedOrigin] = struct{}{}
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			if _, ok := allowedOrigins[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+		}
+
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 

@@ -32,6 +32,14 @@ type AuthService interface {
 	Logout(token string)
 }
 
+type authResponsavelReader interface {
+	GetResponsavelChildren(userID string) ([]auth.ResponsavelChildInfo, error)
+}
+
+type authResponsavelWriter interface {
+	AddResponsavelChildren(userID string, links []auth.ResponsavelChildLinkInput) ([]auth.ResponsavelChildInfo, error)
+}
+
 // authRequest representa o payload aceito nos endpoints de autenticação.
 // Campos em português e inglês são suportados para compatibilidade do frontend.
 type authRequest struct {
@@ -40,6 +48,23 @@ type authRequest struct {
 	Email    string `json:"email"`
 	Senha    string `json:"senha"`
 	Password string `json:"password"`
+
+	CodigoSala          string                 `json:"codigo_sala"`
+	ClassroomCode       string                 `json:"classroom_code"`
+	ClassroomAccessCode string                 `json:"classroomAccessCode"`
+	CodigosFilhos       []string               `json:"codigos_filhos"`
+	ChildrenCodes       []string               `json:"children_codes"`
+	ChildrenCodesAlt    []string               `json:"childrenCodes"`
+	VinculosFilhos      []authChildLinkRequest `json:"vinculos_filhos"`
+	ChildrenLinks       []authChildLinkRequest `json:"children_links"`
+	ChildrenLinksAlt    []authChildLinkRequest `json:"childrenLinks"`
+}
+
+type authChildLinkRequest struct {
+	CodigoSala    string `json:"codigo_sala"`
+	ClassroomCode string `json:"classroom_code"`
+	CodigoFilho   string `json:"codigo_filho"`
+	ChildCode     string `json:"child_code"`
 }
 
 // NewAuthHandler cria um handler autenticado com o serviço injetado.
@@ -61,6 +86,56 @@ func (r authRequest) resolvedPassword() string {
 		return r.Senha
 	}
 	return r.Password
+}
+
+func (r authRequest) resolvedClassroomCode() string {
+	if strings.TrimSpace(r.CodigoSala) != "" {
+		return r.CodigoSala
+	}
+	if strings.TrimSpace(r.ClassroomCode) != "" {
+		return r.ClassroomCode
+	}
+	return r.ClassroomAccessCode
+}
+
+func (r authRequest) resolvedChildrenCodes() []string {
+	if len(r.CodigosFilhos) > 0 {
+		return r.CodigosFilhos
+	}
+	if len(r.ChildrenCodes) > 0 {
+		return r.ChildrenCodes
+	}
+	return r.ChildrenCodesAlt
+}
+
+func (r authRequest) resolvedChildrenLinks() []auth.ResponsavelChildLinkInput {
+	links := r.VinculosFilhos
+	if len(links) == 0 {
+		links = r.ChildrenLinks
+	}
+	if len(links) == 0 {
+		links = r.ChildrenLinksAlt
+	}
+
+	resolved := make([]auth.ResponsavelChildLinkInput, 0, len(links))
+	for _, link := range links {
+		classroomCode := strings.TrimSpace(link.CodigoSala)
+		if classroomCode == "" {
+			classroomCode = strings.TrimSpace(link.ClassroomCode)
+		}
+
+		childCode := strings.TrimSpace(link.CodigoFilho)
+		if childCode == "" {
+			childCode = strings.TrimSpace(link.ChildCode)
+		}
+
+		resolved = append(resolved, auth.ResponsavelChildLinkInput{
+			ClassroomCode: classroomCode,
+			ChildCode:     childCode,
+		})
+	}
+
+	return resolved
 }
 
 // Health expõe endpoint simples para verificação de disponibilidade da API.
@@ -97,15 +172,22 @@ func (h *AuthHandler) registerByRole(w http.ResponseWriter, r *http.Request, rol
 	}
 
 	user, err := h.authService.Register(auth.RegisterInput{
-		Name:     req.resolvedName(),
-		Email:    req.Email,
-		Password: req.resolvedPassword(),
-		Role:     role,
+		Name:          req.resolvedName(),
+		Email:         req.Email,
+		Password:      req.resolvedPassword(),
+		Role:          role,
+		ClassroomCode: req.resolvedClassroomCode(),
+		ChildrenCodes: req.resolvedChildrenCodes(),
+		ChildrenLinks: req.resolvedChildrenLinks(),
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrEmailAlreadyExists):
 			writeError(w, http.StatusConflict, "email already exists")
+		case errors.Is(err, auth.ErrClassroomNotFound):
+			writeError(w, http.StatusBadRequest, "classroom code not found")
+		case errors.Is(err, auth.ErrInvalidChildrenCodes):
+			writeError(w, http.StatusBadRequest, "invalid children codes for classroom")
 		case errors.Is(err, auth.ErrInvalidInput):
 			writeError(w, http.StatusBadRequest, "invalid input")
 		default:
@@ -167,6 +249,83 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	h.authService.Logout(token)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ResponsavelChildren retorna os filhos vinculados ao responsavel autenticado.
+func (h *AuthHandler) ResponsavelChildren(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value("userID").(string)
+	if strings.TrimSpace(userID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	reader, ok := h.authService.(authResponsavelReader)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	children, err := reader.GetResponsavelChildren(userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrUnauthorized):
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"children": children})
+}
+
+// AddResponsavelChildren adiciona novos filhos ao responsavel autenticado.
+func (h *AuthHandler) AddResponsavelChildren(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value("userID").(string)
+	if strings.TrimSpace(userID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	req, err := parseAuthRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	links := req.resolvedChildrenLinks()
+	if len(links) == 0 {
+		classroomCode := strings.TrimSpace(req.resolvedClassroomCode())
+		childrenCodes := req.resolvedChildrenCodes()
+		for _, childCode := range childrenCodes {
+			links = append(links, auth.ResponsavelChildLinkInput{ClassroomCode: classroomCode, ChildCode: childCode})
+		}
+	}
+
+	writer, ok := h.authService.(authResponsavelWriter)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	children, err := writer.AddResponsavelChildren(userID, links)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrUnauthorized):
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+		case errors.Is(err, auth.ErrClassroomNotFound):
+			writeError(w, http.StatusBadRequest, "classroom code not found")
+		case errors.Is(err, auth.ErrInvalidChildrenCodes):
+			writeError(w, http.StatusBadRequest, "invalid children codes for classroom")
+		case errors.Is(err, auth.ErrInvalidInput):
+			writeError(w, http.StatusBadRequest, "invalid input")
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"children": children})
 }
 
 // bearerToken extrai o token a partir do header "Authorization: Bearer <token>".

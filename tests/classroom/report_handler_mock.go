@@ -40,6 +40,12 @@ func (m *mockStudentObsRepo) Create(ctx context.Context, obs *classroom.StudentO
 func (m *mockStudentObsRepo) FindByStudentAndPeriod(ctx context.Context, studentID, periodo string) ([]classroom.StudentObservation, error) {
 	return []classroom.StudentObservation{}, nil
 }
+func (m *mockStudentObsRepo) UpdateByID(ctx context.Context, observationID string, updates map[string]interface{}) (*classroom.StudentObservation, error) {
+	return &classroom.StudentObservation{}, nil
+}
+func (m *mockStudentObsRepo) DeleteByID(ctx context.Context, observationID string) error {
+	return nil
+}
 
 type mockStudentLLMRepo struct{}
 

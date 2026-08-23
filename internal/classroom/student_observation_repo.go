@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -39,4 +40,34 @@ func (r *studentObservationRepo) FindByStudentAndPeriod(ctx context.Context, stu
 		result = append(result, obs)
 	}
 	return result, nil
+}
+
+func (r *studentObservationRepo) UpdateByID(ctx context.Context, observationID string, updates map[string]interface{}) (*StudentObservation, error) {
+	id, err := primitive.ObjectIDFromHex(observationID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updates})
+	if err != nil {
+		return nil, err
+	}
+
+	var updated StudentObservation
+	err = r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&updated)
+	if err != nil {
+		return nil, err
+	}
+
+	return &updated, nil
+}
+
+func (r *studentObservationRepo) DeleteByID(ctx context.Context, observationID string) error {
+	id, err := primitive.ObjectIDFromHex(observationID)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.collection.DeleteOne(ctx, bson.M{"_id": id})
+	return err
 }

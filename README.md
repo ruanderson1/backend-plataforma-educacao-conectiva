@@ -7,7 +7,8 @@ Backend da plataforma educacional, desenvolvido em Go com MongoDB.
 - API HTTP em Go
 - Persistência em MongoDB
 - Arquitetura em camadas (`handlers`, `service`, `repository`)
-- CORS configurado para o frontend local em `http://localhost:5173`
+- CORS configurado para frontends locais em http://localhost:5173 e http://localhost:8081
+- CORS configurável por variável CORS_ALLOWED_ORIGINS (lista separada por vírgula)
 
 ## Módulos implementados
 
@@ -134,6 +135,7 @@ Variáveis de ambiente:
 - `MONGO_URI` (obrigatória)
 - `MONGO_DB` (opcional, default `plataforma_educacao_conectiva`)
 - `SERVER_ADDR` (opcional, default `:4000`)
+- `CORS_ALLOWED_ORIGINS` (opcional, ex.: `http://localhost:8081,http://localhost:5173`)
 
 Exemplo no PowerShell:
 

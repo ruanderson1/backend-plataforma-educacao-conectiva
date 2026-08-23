@@ -93,6 +93,46 @@ func TestRegisterProfessorSuccess(t *testing.T) {
 	}
 }
 
+// TestRegisterResponsavelWithCodes valida cadastro de responsável com código da sala e códigos dos filhos.
+func TestRegisterResponsavelWithCodes(t *testing.T) {
+	var captured auth.RegisterInput
+
+	h := handlers.NewAuthHandler(&fakeAuthService{
+		registerFn: func(input auth.RegisterInput) (auth.User, error) {
+			captured = input
+			return auth.User{
+				ID:        "usr_2",
+				Name:      "Maria",
+				Email:     "maria@teste.com",
+				Role:      auth.RoleResponsavel,
+				CreatedAt: time.Now().UTC(),
+			}, nil
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/auth/responsavel/register",
+		strings.NewReader(`{"nome":"Maria","email":"maria@teste.com","senha":"123456","codigo_sala":"CL-AB12CD34","codigos_filhos":["A1B2","C3D4"]}`),
+	)
+	h.RegisterResponsavel(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d", rec.Code)
+	}
+
+	if captured.Role != auth.RoleResponsavel {
+		t.Fatalf("expected role responsavel, got %s", captured.Role)
+	}
+	if captured.ClassroomCode != "CL-AB12CD34" {
+		t.Fatalf("unexpected classroom code: %s", captured.ClassroomCode)
+	}
+	if len(captured.ChildrenCodes) != 2 || captured.ChildrenCodes[0] != "A1B2" || captured.ChildrenCodes[1] != "C3D4" {
+		t.Fatalf("unexpected children codes: %+v", captured.ChildrenCodes)
+	}
+}
+
 // TestLoginResponsavelInvalidCredentials valida retorno 401 para credenciais inválidas.
 func TestLoginResponsavelInvalidCredentials(t *testing.T) {
 	h := handlers.NewAuthHandler(&fakeAuthService{

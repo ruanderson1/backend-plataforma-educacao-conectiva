@@ -24,6 +24,7 @@ type application struct {
 	classroomHandler *handlers.ClassroomHandler
 	profileHandler   *handlers.ProfileHandler
 	reportHandler    *handlers.ReportHandler
+	chatHandler      *classroom.ChatHandler
 }
 
 const (
@@ -90,11 +91,17 @@ func main() {
 		),
 	)
 
+	chatThreadRepo := classroom.NewChatThreadRepo(client.Database(mongoDB))
+	chatMessageRepo := classroom.NewChatMessageRepo(client.Database(mongoDB))
+	chatResponsibleRepo := classroom.NewChatResponsibleRepo(client.Database(mongoDB))
+	chatHandler := classroom.NewChatHandler(chatThreadRepo, chatMessageRepo, studentRepo, classroomRepo, chatResponsibleRepo)
+
 	app := &application{
 		authHandler:      handlers.NewAuthHandler(authService),
 		classroomHandler: classroomHandler,
 		profileHandler:   profileHandler,
 		reportHandler:    reportHandler,
+		chatHandler:      chatHandler,
 	}
 
 	srv := &http.Server{

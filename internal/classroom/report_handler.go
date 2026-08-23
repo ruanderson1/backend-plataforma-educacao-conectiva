@@ -60,6 +60,64 @@ func (h *ReportHandler) ListStudentObservations(w http.ResponseWriter, r *http.R
 	respondJSON(w, http.StatusOK, obs)
 }
 
+// PUT /api/reports/student-observations
+func (h *ReportHandler) UpdateStudentObservation(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		StudentObservationID string `json:"student_observation_id"`
+		ObservacaoProfessor  string `json:"observacao_professor"`
+		ObservacaoPais       string `json:"observacao_pais"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	observationID := strings.TrimSpace(req.StudentObservationID)
+	if observationID == "" {
+		respondError(w, http.StatusBadRequest, "student_observation_id is required")
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if strings.TrimSpace(req.ObservacaoProfessor) != "" {
+		updates["observacao_professor"] = strings.TrimSpace(req.ObservacaoProfessor)
+	}
+	if strings.TrimSpace(req.ObservacaoPais) != "" {
+		updates["observacao_pais"] = strings.TrimSpace(req.ObservacaoPais)
+	}
+
+	if len(updates) == 0 {
+		respondError(w, http.StatusBadRequest, "at least one observation field must be provided")
+		return
+	}
+
+	updated, err := h.studentObsRepo.UpdateByID(r.Context(), observationID, updates)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, updated)
+}
+
+// DELETE /api/reports/student-observations?student_observation_id=...
+func (h *ReportHandler) DeleteStudentObservation(w http.ResponseWriter, r *http.Request) {
+	observationID := strings.TrimSpace(r.URL.Query().Get("student_observation_id"))
+	if observationID == "" {
+		respondError(w, http.StatusBadRequest, "student_observation_id is required")
+		return
+	}
+
+	err := h.studentObsRepo.DeleteByID(r.Context(), observationID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "student observation deleted"})
+}
+
 // --- STUDENT LLM REPORTS ---
 // POST /api/reports/student-llm-reports
 // Espera: { "student_id": "...", "student_observation_id": "...", "periodo_referencia": "..." }
